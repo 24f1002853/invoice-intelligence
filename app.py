@@ -22,6 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 class RequestBody(BaseModel):
     document_id: str
     text: str
@@ -33,36 +34,49 @@ def home():
     return {"status": "API Running"}
 
 
-@app.post("/")
+@app.post("/extract")
 def extract(req: RequestBody):
 
     prompt = f"""
-You are an expert information extraction system.
+You are an expert invoice extraction assistant.
 
-Extract information from the document.
+Extract information from the invoice.
 
-Document:
+Invoice Text:
 
 {req.text}
 
-The required JSON Schema is:
+Return ONLY a valid JSON object.
+
+The JSON MUST exactly follow this schema:
 
 {json.dumps(req.schema, indent=2)}
 
 Rules:
 
-1. Return ONLY valid JSON.
-2. Follow the JSON Schema EXACTLY.
-3. Return exactly the required keys.
-4. No extra keys.
-5. Missing values must be null.
-6. Dates must be YYYY-MM-DD.
-7. Currency must be ISO4217 (USD, INR, EUR, GBP, JPY).
-8. Numbers must be JSON numbers.
-9. Booleans must be true/false.
-10. Preserve line_items order.
-11. Do NOT return markdown.
-12. Do NOT explain anything.
+- Return ONLY JSON.
+- Do NOT return markdown.
+- Do NOT explain anything.
+- Return EXACTLY the schema keys.
+- No extra keys.
+- Missing values -> null.
+- vendor = biller's proper name exactly as written.
+- currency = ISO 4217 code only (USD, EUR, GBP, INR, JPY).
+- total_amount = integer.
+- invoice_date = YYYY-MM-DD.
+- due_in_days = integer.
+- is_paid = boolean.
+- priority MUST be one of:
+  low
+  normal
+  high
+  urgent
+- contact_email MUST be lowercase.
+- line_items MUST always be an array.
+- Preserve the order of line_items.
+- unit_price MUST be integer.
+- quantity MUST be integer.
+- item_count MUST equal length(line_items).
 """
 
     try:
@@ -78,12 +92,27 @@ Rules:
         answer = answer.replace("```", "")
         answer = answer.strip()
 
-        return json.loads(answer)
+        data = json.loads(answer)
+
+        # Normalize priority
+        if isinstance(data.get("priority"), str):
+            data["priority"] = data["priority"].lower()
+
+        # Normalize email
+        if isinstance(data.get("contact_email"), str):
+            data["contact_email"] = data["contact_email"].lower()
+
+        # Ensure line_items exists
+        if data.get("line_items") is None:
+            data["line_items"] = []
+
+        # Compute item_count
+        data["item_count"] = len(data["line_items"])
+
+        return data
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
 
         return {
             "error": str(e)
-            }
+        }
