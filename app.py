@@ -80,5 +80,10 @@ Rules:
 
         return json.loads(answer)
 
-    except Exception:
-        return {}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
+        return {
+            "error": str(e)
+            }
